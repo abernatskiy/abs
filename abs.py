@@ -9,21 +9,38 @@ class Abs(object):
 		print('Abs classifier initialized')
 		self.n_prototypes = n_prototypes
 
-	def fit(self, features, labels):
-		print('Abs fit called')
-
-		self.features = np.array(features)
-		self.dim = self.features.shape[1]
-
-		self.labels = np.array(labels)
-		self.n_labels = len(np.unique(self.labels))
-
+	def initializeExplicitParametersRandomly(self):
 		self.prototypes = np.random.random([self.n_prototypes, self.dim]) # prototypes - the surrogate nearest neighbor vectors
 		self.alphas = np.random.random(self.n_prototypes) # how certain we are in the membership degrees of the prototype
 		self.gammas = np.random.random(self.n_prototypes) # how far away should the influence of the prototype extend
 		self.mem_degrees = np.zeros([self.n_prototypes, self.n_labels]) # membership of the prototype in every label
 		for i in range(self.n_prototypes):
 			self.mem_degrees[i][np.random.randint(self.n_labels)] = 1.
+
+	def initializeImplicitParametersRandomly(self):
+		self.prototypes = np.random.random([self.n_prototypes, self.dim]) # prototypes - the surrogate nearest neighbor vectors
+		self.ksi = 2.*np.random.random(self.n_prototypes) - 1.
+		self.eta = 2.*np.random.random(self.n_prototypes) - 1.
+		self.beta = np.zeros([self.n_prototypes, self.n_labels])
+		for i in range(self.n_prototypes):
+			self.beta[i][np.random.randint(self.n_labels)] = np.random.choice([-1., 1.])
+
+	def updateExplicit(self):
+		self.alphas = 1./(1. + np.exp(-1.*self.ksi))
+		self.gammas = self.eta**2
+		betaSquared = self.beta**2
+		self.mem_degrees = np.array([ betaSquared[i]/sum(betaSquared[i]) for i in range(self.n_prototypes) ])
+
+	def fit(self, features, labels):
+		print('Abs fit called')
+
+		self.features = np.array(features)
+		self.dim = self.features.shape[1]
+		self.labels = np.array(labels)
+		self.n_labels = len(np.unique(self.labels))
+
+		self.initializeExplicitParametersRandomly()
+
 		return self
 
 	def _layer1(self, feat):
