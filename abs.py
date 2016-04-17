@@ -24,6 +24,10 @@ class Abs(object):
 		self.beta = np.zeros([self.n_prototypes, self.n_labels])
 		for i in range(self.n_prototypes):
 			self.beta[i][np.random.randint(self.n_labels)] = np.random.choice([-1., 1.])
+		self.gradIdxs = [0,0,0]
+		self.gradIdxs[0] = self.n_labels*self.n_prototypes
+		self.gradIdxs[1] = self.gradIdxs[0]+self.n_prototypes
+		self.gradIdxs[2] = self.gradIdxs[1]+self.n_prototypes
 
 	def _updateExplicit(self):
 		self.alphas = 1./(1. + np.exp(-1.*self.ksi))
@@ -31,17 +35,68 @@ class Abs(object):
 		betaSquared = self.beta**2
 		self.mem_degrees = np.array([ betaSquared[i]/sum(betaSquared[i]) for i in range(self.n_prototypes) ])
 
-	def fit(self, features, labels):
-		print('Abs fit called')
+	def _getBatchGradient(self):
+		gradient = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
+		for f,l in zip(self.features, self.labels):
+			print 'Computing gradient of feature ' + str(f) + ' label ' + str(l)
+			self._cacheAux(f, l)
+			gradient[0:self.gradIdxs[0]] += self._getBetaGradient(f, l)
+			gradient[self.gradIdxs[0]:self.gradIdxs[1]] += self._getEtaGradient(f, l)
+			gradient[self.gradIdxs[1]:self.gradIdxs[2]] += self._getKsiGradient(f, l)
+			gradient[self.gradIdxs[2]:] += self._getPrototypesGradient(f, l)
+		gradient /= len(self.labels)
+		return gradient
 
+	def _cacheAux(self, feature, label):
+		self._prototypeActivations = self._layer1(feature)
+		self._evidenceItems = self._layer2(self._prototypeActivations)
+		self._finalBBA = self._layer3(self._evidenceItems)
+		self._evidenceItemsBar = [ self._evidenceBar(e) for e in self._evidenceItems ]
+
+	def _evidenceBar(self, evidence):
+		fLabEvid,fUncEvid = self._finalBBA
+		labEvid,uncEvid = evidence
+		uncEvidBar = fUncEvid/uncEvid
+		labEvidBar = np.zeros(self.n_labels)
+		for j in range(self.n_labels):
+			labEvidBar[j] = ( fLabEvid[j] - labEvid[j]*uncEvidBar )/( labEvid[j] + uncEvid )
+		return (labEvidBar, uncEvidBar)
+
+	def _getBetaGradient(self, feature, label):
+		return np.ones(self.n_labels*self.n_prototypes)
+	def _getEtaGradient(self, feature, label):
+		return np.ones(self.n_prototypes)
+	def _getKsiGradient(self, feature, label):
+		return np.ones(self.n_prototypes)
+	def _getPrototypesGradient(self, feature, label):
+		return np.ones(self.n_prototypes*self.dim)
+
+	def _getBatchError(self):
+		return 0.
+
+	def _stepOptimization(self, gradient, learning_rate):
+		gradient *= learning_rate
+		self.beta -= gradient[0:self.gradIdxs[0]].reshape(self.beta.shape)
+		self.eta -= gradient[self.gradIdxs[0]:self.gradIdxs[1]]
+		self.ksi -= gradient[self.gradIdxs[1]:self.gradIdxs[2]]
+		self.prototypes -= gradient[self.gradIdxs[2]:].reshape(self.prototypes.shape)
+		self._updateExplicit()
+
+	def fit(self, features, labels, max_iterations=1000, epsilon=0.1, learning_rate=0.1, momentum=0.0):
+		print('Abs fit called')
 		self.features = np.array(features)
 		self.dim = self.features.shape[1]
 		self.labels = np.array(labels)
 		self.n_labels = len(np.unique(self.labels))
-
 		self._initializeImplicitParametersRandomly()
 		self._updateExplicit()
-
+		prevGrad = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
+		for i in range(max_iterations):
+			curGrad = self._getBatchGradient()
+			self._stepOptimization(curGrad + prevGrad*momentum, learning_rate)
+			if self._getBatchError() < epsilon:
+				break
+			prevGrad = curGrad
 		return self
 
 	def _layer1(self, feat):
