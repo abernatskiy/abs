@@ -38,7 +38,7 @@ class Abs(object):
 	def _getBatchGradient(self, features, labels, nu):
 		gradient = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
 		for f,l in zip(features, labels):
-			print 'Computing gradient of feature ' + str(f) + ' label ' + str(l)
+			# print 'Computing gradient of feature ' + str(f) + ' label ' + str(l)
 			self._cacheAux(f, l, nu)
 			gradient[0:self.gradIdxs[0]] += self._getBetaGradient(f, l)
 			gradient[self.gradIdxs[0]:self.gradIdxs[1]] += self._getEtaGradient(f, l)
@@ -108,7 +108,13 @@ class Abs(object):
 		return ksigrad
 
 	def _getPrototypesGradient(self, feature, label):
-		return np.ones(self.n_prototypes*self.dim)
+		protograd = np.zeros([self.n_prototypes, self.dim])
+		for i in range(self.n_prototypes):
+			protograd[i] = (feature - self.prototypes[i])*2.*self.gammas[i]*self._prototypeActivations[i]*self._sgrad[i]
+		if np.count_nonzero(protograd) == 0:
+			print 'WARNING: prototype gradient vanished for feature ' + str(feature) + ' label ' + str(label)
+		# print repr(protograd)
+		return protograd.reshape(self.n_prototypes*self.dim)
 
 	def _getBatchError(self):
 		return 0.
