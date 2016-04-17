@@ -118,9 +118,24 @@ class Abs(object):
 		return protograd.reshape(self.n_prototypes*self.dim)
 
 	def _getBatchError(self, features, labels):
-		predLabels = self.predict(features)
-		print 'Ref: ' + str(labels)
-		print 'Pre: ' + str(predLabels)
+		nu = 1./self.n_labels
+		layer1 = [ self._layer1(f) for f in features ]
+		layer2 = [ self._layer2(pa) for pa in layer1 ]
+		layer3 = [ self._layer3(ev) for ev in layer2 ]
+		pignisticBBAs = [ pbba + nu*unc for pbba,unc in layer3 ]
+		desiredBBAs =  [ np.zeros(self.n_labels) for i in range(len(labels)) ]
+		for i in range(len(labels)):
+			desiredBBAs[i][labels[i]] = 1.
+		patErrors = [ sum((pbba-dbba)**2) for pbba,dbba in zip(pignisticBBAs,desiredBBAs) ]
+		totError = sum(patErrors)/len(labels)
+		print str(totError)
+
+		# self._pignisticError = pignisticBBA - desiredBBA
+
+		# predLabels = self.predict(features)
+		# print 'Ref: ' + str(labels)
+		# print 'Pre: ' + str(predLabels)
+
 		return 1.
 
 	def _stepOptimization(self, gradient, learning_rate):
@@ -131,8 +146,7 @@ class Abs(object):
 		self.prototypes -= gradient[self.gradIdxs[2]:].reshape(self.prototypes.shape)
 		self._updateExplicit()
 
-	def fit(self, features, labels, max_iterations=1000, epsilon=0.1, learning_rate=0.1, momentum=0.0):
-		print('Abs fit called')
+	def fit(self, features, labels, max_iterations=10000, epsilon=0.1, learning_rate=0.3, momentum=0.2):
 		self.features = np.array(features)
 		self.dim = self.features.shape[1]
 		self.labels = np.array(labels)
@@ -146,6 +160,7 @@ class Abs(object):
 			if self._getBatchError(self.features, self.labels) < epsilon:
 				break
 			prevGrad = curGrad
+			# print 'Current weights: ' + repr(self.prototypes) + '\n' + repr(self.alphas) + '\n' + repr(self.gammas) + '\n' + repr(self.mem_degrees)
 		return self
 
 	def _layer1(self, feat):
@@ -165,7 +180,6 @@ class Abs(object):
 		return (curLabelEvid, curUncEvid)
 
 	def predict(self, predFeatures):
-		print('Abs predict called')
 		layer1 = [ self._layer1(f) for f in predFeatures ]
 		layer2 = [ self._layer2(pa) for pa in layer1 ]
 		layer3 = [ self._layer3(ev) for ev in layer2 ]
