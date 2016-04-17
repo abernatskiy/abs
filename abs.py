@@ -35,11 +35,11 @@ class Abs(object):
 		betaSquared = self.beta**2
 		self.mem_degrees = np.array([ betaSquared[i]/sum(betaSquared[i]) for i in range(self.n_prototypes) ])
 
-	def _getBatchGradient(self):
+	def _getBatchGradient(self, nu):
 		gradient = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
 		for f,l in zip(self.features, self.labels):
 			print 'Computing gradient of feature ' + str(f) + ' label ' + str(l)
-			self._cacheAux(f, l)
+			self._cacheAux(f, l, nu)
 			gradient[0:self.gradIdxs[0]] += self._getBetaGradient(f, l)
 			gradient[self.gradIdxs[0]:self.gradIdxs[1]] += self._getEtaGradient(f, l)
 			gradient[self.gradIdxs[1]:self.gradIdxs[2]] += self._getKsiGradient(f, l)
@@ -47,23 +47,44 @@ class Abs(object):
 		gradient /= len(self.labels)
 		return gradient
 
-	def _cacheAux(self, feature, label):
+	def _cacheAux(self, feature, label, nu):
 		self._prototypeActivations = self._layer1(feature)
 		self._evidenceItems = self._layer2(self._prototypeActivations)
 		self._finalBBA = self._layer3(self._evidenceItems)
 		self._evidenceItemsBar = [ self._evidenceBar(e) for e in self._evidenceItems ]
+		pignisticBBA, uncertainty = self._finalBBA
+		pignisticBBA += nu*uncertainty
+		desiredBBA = np.zeros(self.n_labels)
+		desiredBBA[label] = 1.
+		self._pignisticError = pignisticBBA - desiredBBA
 
 	def _evidenceBar(self, evidence):
 		fLabEvid,fUncEvid = self._finalBBA
 		labEvid,uncEvid = evidence
-		uncEvidBar = fUncEvid/uncEvid
+		uncEvidBar = fUncEvid/uncEvid # eq (77)
 		labEvidBar = np.zeros(self.n_labels)
 		for j in range(self.n_labels):
-			labEvidBar[j] = ( fLabEvid[j] - labEvid[j]*uncEvidBar )/( labEvid[j] + uncEvid )
+			labEvidBar[j] = ( fLabEvid[j] - labEvid[j]*uncEvidBar )/( labEvid[j] + uncEvid ) # eq (76)
+		# print str(evidence) + ' + ' + str(self._finalBBA) + ' -> ' + str((labEvidBar, uncEvidBar))
 		return (labEvidBar, uncEvidBar)
 
 	def _getBetaGradient(self, feature, label):
-		return np.ones(self.n_labels*self.n_prototypes)
+		ugrad = np.zeros([self.n_prototypes, self.n_labels])
+		for i in range(self.n_prototypes):
+			lEvBar,uEvBar = self._evidenceItemsBar[i]
+			ugrad[i] = self._pignisticError*(lEvBar + uEvBar)*self._prototypeActivations[i] # eq (79)
+		bgrad = np.zeros([self.n_prototypes, self.n_labels])
+		for i in range(self.n_prototypes):
+			bsquared = self.beta[i]**2
+			bnorm = sum(bsquared)
+			wbnorm = sum(bsquared*ugrad[i])
+			bgrad[i] = self.beta[i]*(ugrad[i]*bnorm - wbnorm)*2./(bnorm**2) # eq (68)
+			# print str(self.beta[i]) + ' + ' + str(ugrad[i]) + ' + ' + str(bnorm) + ' + ' + str(wbnorm) + ' + ' + str(ugrad[i]*bnorm - wbnorm)
+		# print repr(bgrad)
+		if np.count_nonzero(bgrad) == 0:
+			print 'WARNING: beta gradient vanished for feature ' + str(feature) + ' label ' + str(label)
+		return bgrad.reshape(self.n_labels*self.n_prototypes)
+
 	def _getEtaGradient(self, feature, label):
 		return np.ones(self.n_prototypes)
 	def _getKsiGradient(self, feature, label):
@@ -92,7 +113,7 @@ class Abs(object):
 		self._updateExplicit()
 		prevGrad = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
 		for i in range(max_iterations):
-			curGrad = self._getBatchGradient()
+			curGrad = self._getBatchGradient(1./self.n_labels) # PIGNISTIC OUTPUT
 			self._stepOptimization(curGrad + prevGrad*momentum, learning_rate)
 			if self._getBatchError() < epsilon:
 				break
