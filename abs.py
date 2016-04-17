@@ -21,9 +21,10 @@ class Abs(object):
 		self.prototypes = np.random.random([self.n_prototypes, self.dim]) # prototypes - the surrogate nearest neighbor vectors
 		self.ksi = 2.*np.random.random(self.n_prototypes) - 1.
 		self.eta = 2.*np.random.random(self.n_prototypes) - 1.
-		self.beta = np.zeros([self.n_prototypes, self.n_labels])
-		for i in range(self.n_prototypes):
-			self.beta[i][np.random.randint(self.n_labels)] = np.random.choice([-1., 1.])
+		# self.beta = np.zeros([self.n_prototypes, self.n_labels])
+		# for i in range(self.n_prototypes):
+		# 	self.beta[i][np.random.randint(self.n_labels)] = np.random.choice([-1., 1.])
+		self.beta = 2.*np.random.random([self.n_prototypes, self.n_labels]) - 1.
 		self.gradIdxs = [0,0,0]
 		self.gradIdxs[0] = self.n_labels*self.n_prototypes
 		self.gradIdxs[1] = self.gradIdxs[0]+self.n_prototypes
@@ -116,8 +117,11 @@ class Abs(object):
 		# print repr(protograd)
 		return protograd.reshape(self.n_prototypes*self.dim)
 
-	def _getBatchError(self):
-		return 0.
+	def _getBatchError(self, features, labels):
+		predLabels = self.predict(features)
+		print 'Ref: ' + str(labels)
+		print 'Pre: ' + str(predLabels)
+		return 1.
 
 	def _stepOptimization(self, gradient, learning_rate):
 		gradient *= learning_rate
@@ -139,7 +143,7 @@ class Abs(object):
 		for i in range(max_iterations):
 			curGrad = self._getBatchGradient(self.features, self.labels, 1./self.n_labels) # PIGNISTIC OUTPUT
 			self._stepOptimization(curGrad + prevGrad*momentum, learning_rate)
-			if self._getBatchError() < epsilon:
+			if self._getBatchError(self.features, self.labels) < epsilon:
 				break
 			prevGrad = curGrad
 		return self
@@ -165,4 +169,5 @@ class Abs(object):
 		layer1 = [ self._layer1(f) for f in predFeatures ]
 		layer2 = [ self._layer2(pa) for pa in layer1 ]
 		layer3 = [ self._layer3(ev) for ev in layer2 ]
-		return [ None for f in predFeatures ]
+		pignisticLabels = [ np.argmax(lev) for lev,uev in layer3 ]
+		return pignisticLabels
