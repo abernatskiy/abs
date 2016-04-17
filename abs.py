@@ -10,7 +10,7 @@ class Abs(object):
 		self.n_prototypes = n_prototypes
 
 	def _initializeExplicitParametersRandomly(self):
-		self.prototypes = np.random.random([self.n_prototypes, self.dim]) # prototypes - the surrogate nearest neighbor vectors
+		self._initializePrototypes()
 		self.alphas = np.random.random(self.n_prototypes) # how certain we are in the membership degrees of the prototype
 		self.gammas = np.random.random(self.n_prototypes) # how far away should the influence of the prototype extend
 		self.mem_degrees = np.zeros([self.n_prototypes, self.n_labels]) # membership of the prototype in every label
@@ -18,7 +18,7 @@ class Abs(object):
 			self.mem_degrees[i][np.random.randint(self.n_labels)] = 1.
 
 	def _initializeImplicitParametersRandomly(self):
-		self.prototypes = np.random.random([self.n_prototypes, self.dim]) # prototypes - the surrogate nearest neighbor vectors
+		self._initializePrototypes()
 		self.ksi = 2.*np.random.random(self.n_prototypes) - 1.
 		self.eta = 2.*np.random.random(self.n_prototypes) - 1.
 		# self.beta = np.zeros([self.n_prototypes, self.n_labels])
@@ -29,6 +29,9 @@ class Abs(object):
 		self.gradIdxs[0] = self.n_labels*self.n_prototypes
 		self.gradIdxs[1] = self.gradIdxs[0]+self.n_prototypes
 		self.gradIdxs[2] = self.gradIdxs[1]+self.n_prototypes
+
+	def _initializePrototypes(self):
+		self.prototypes = np.array([ (self.featuresMax - self.featuresMin)*np.random.random(self.dim) + self.featuresMin for i in range(self.n_prototypes) ]) # prototypes - the surrogate nearest neighbor vectors
 
 	def _updateExplicit(self):
 		self.alphas = 1./(1. + np.exp(-1.*self.ksi))
@@ -128,15 +131,15 @@ class Abs(object):
 			desiredBBAs[i][labels[i]] = 1.
 		patErrors = [ sum((pbba-dbba)**2) for pbba,dbba in zip(pignisticBBAs,desiredBBAs) ]
 		totError = sum(patErrors)/len(labels)
-		print str(totError)
 
 		# self._pignisticError = pignisticBBA - desiredBBA
 
 		# predLabels = self.predict(features)
 		# print 'Ref: ' + str(labels)
 		# print 'Pre: ' + str(predLabels)
+		self.errorVals.append(totError)
 
-		return 1.
+		return totError
 
 	def _stepOptimization(self, gradient, learning_rate):
 		gradient *= learning_rate
@@ -148,19 +151,26 @@ class Abs(object):
 
 	def fit(self, features, labels, max_iterations=10000, epsilon=0.1, learning_rate=0.3, momentum=0.2):
 		self.features = np.array(features)
+		self.featuresMin = np.min(self.features, axis=0)
+		self.featuresMax = np.max(self.features, axis=0)
 		self.dim = self.features.shape[1]
 		self.labels = np.array(labels)
 		self.n_labels = len(np.unique(self.labels))
 		self._initializeImplicitParametersRandomly()
 		self._updateExplicit()
+		print 'Began with: ' + repr(self.prototypes) + '\n' + repr(self.alphas) + '\n' + repr(self.gammas) + '\n' + repr(self.mem_degrees)
 		prevGrad = np.zeros(self.n_prototypes*(2+self.dim+self.n_labels))
+		self.errorVals = []
 		for i in range(max_iterations):
-			curGrad = self._getBatchGradient(self.features, self.labels, 1./self.n_labels) # PIGNISTIC OUTPUT
-			self._stepOptimization(curGrad + prevGrad*momentum, learning_rate)
 			if self._getBatchError(self.features, self.labels) < epsilon:
 				break
+			curGrad = self._getBatchGradient(self.features, self.labels, 1./self.n_labels) # PIGNISTIC OUTPUT
+			self._stepOptimization(curGrad + prevGrad*momentum, learning_rate)
 			prevGrad = curGrad
 			# print 'Current weights: ' + repr(self.prototypes) + '\n' + repr(self.alphas) + '\n' + repr(self.gammas) + '\n' + repr(self.mem_degrees)
+			if i % 100 == 0:
+				print(str(self.errorVals[-1]))
+		print 'At the end: ' + repr(self.prototypes) + '\n' + repr(self.alphas) + '\n' + repr(self.gammas) + '\n' + repr(self.mem_degrees)
 		return self
 
 	def _layer1(self, feat):
@@ -184,4 +194,4 @@ class Abs(object):
 		layer2 = [ self._layer2(pa) for pa in layer1 ]
 		layer3 = [ self._layer3(ev) for ev in layer2 ]
 		pignisticLabels = [ np.argmax(lev) for lev,uev in layer3 ]
-		return pignisticLabels
+		return np.array(pignisticLabels)
