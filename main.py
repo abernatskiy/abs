@@ -14,6 +14,33 @@ def loadData(datafile):
 	print('Read a dataset from ' + datafile + ': ' + str(features.shape[0]) + ' data points, labels: ' + str(labelEnc.classes_))
 	return (features, labels, labelEnc)
 
+def getDecisionSpaceCrossSectionMap(classifier, fixDims, fixDimVals, freeDimsLimits, resolution, rejectionCost=None, newLabelCost=None):
+	totalDims = len(fixDims) + len(freeDimsLimits)
+
+	freeDims = range(totalDims)
+	for dim in fixDims:
+		freeDims.remove(dim)
+
+	gridPts = [ int(1+(end-start)/resolution) for start,end in freeDimsLimits ]
+	numPoints = np.product(gridPts)
+	def linearIdxToGrid(linIdx, dim):
+		curPoints = numPoints
+		curIdx = linIdx
+		for d in freeDims[:-1]:
+			curPoints = curPoints/gridPts[freeDims.index(d)]
+			coord = curIdx / curPoints
+			curIdx = curIdx % curPoints
+			if d == dim:
+				return coord
+		return curIdx
+	grid = []
+	for i in range(numPoints):
+		curPos = [ fixDimVals[fixDims.index(dim)] if dim in fixDims else freeDimsLimits[freeDims.index(dim)][0] + resolution*linearIdxToGrid(i, dim) for dim in range(totalDims) ]
+		grid.append(curPos)
+
+	gridVals = classifier.predict(grid)
+	return gridVals.reshape(gridPts)
+
 if __name__ == '__main__':
 	irisDataFile = 'data/iris/iris.data'
 	features, labels, labelEnc = loadData(irisDataFile)
@@ -31,3 +58,4 @@ if __name__ == '__main__':
 	testLabelsKnn = knncla.predict(testVectors)
 #	print('Got labels ' + str(labelEnc.inverse_transform(testLabelsKnn)) + ' from k-nn classifier (numericals ' + str(testLabelsKnn) + ')')
 	print('KNN: Got labels ' + str(testLabelsKnn))
+
