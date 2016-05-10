@@ -189,9 +189,19 @@ class Abs(object):
 			curUncEvid = curUncEvid*uncEvid
 		return (curLabelEvid, curUncEvid)
 
-	def predict(self, predFeatures):
+	def predict(self, predFeatures, rejectionCost=None, newLabelCost=None):
 		layer1 = [ self._layer1(f) for f in predFeatures ]
 		layer2 = [ self._layer2(pa) for pa in layer1 ]
 		layer3 = [ self._layer3(ev) for ev in layer2 ]
-		pignisticLabels = [ np.argmax(lev) for lev,uev in layer3 ]
-		return np.array(pignisticLabels)
+		if not rejectionCost and not newLabelCost:
+			labels = [ np.argmax(lev) for lev,uev in layer3 ]
+		elif not newLabelCost and rejectionCost:
+			labelRisks = [ [ sum(lev) - curLabelEv + uev*(float(len(lev)-1))/float(len(lev)) for curLabelEv in lev ] for lev,uev in layer3 ]
+			labels = [ np.argmin([rejectionCost]+lrisks) - 1 for lrisks in labelRisks ]
+		elif newLabelCost and rejectionCost:
+			labelRisks = [ [ sum(lev) - curLabelEv + uev*(float(len(lev)))/float(len(lev)+1) for curLabelEv in lev ] for lev,uev in layer3 ]
+			newLabelRisk = [ newLabelCost*( sum(lev) + uev*(float(len(lev)))/float(len(lev)+1) ) for lev,uev in layer3 ]
+			labels = [ np.argmin([nlrisk, rejectionCost]+lrisks) - 2 for lrisks,nlrisk in zip(labelRisks,newLabelRisk) ]
+		else:
+			raise ValueError('rejectionCost must be defined if newLabelCost is used')
+		return np.array(labels)

@@ -21,7 +21,7 @@ if __name__ == '__main__':
 									[ 6.4,  3.3,  5.55,  2.2]	] # Should be Iris-virginica
 
 	abscla = Abs()
-	abscla.fit(features, labels, max_iterations=1000)
+	abscla.fit(features, labels, max_iterations=100000)
 	testLabelsAbs = abscla.predict(testVectors)
 #	print('Got labels ' + str(labelEnc.inverse_transform(testLabelsAbs)) + ' from ABS classifier (numericals ' + str(testLabelsAbs) + ')')
 	print('ABS: Got labels ' + str(testLabelsAbs))
